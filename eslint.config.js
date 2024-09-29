@@ -3,8 +3,10 @@ import prettier from 'eslint-config-prettier';
 import svelte from 'eslint-plugin-svelte';
 import globals from 'globals';
 import tseslint from 'typescript-eslint';
+import pluginQuery from '@tanstack/eslint-plugin-query';
 
 export default tseslint.config(
+	...pluginQuery.configs['flat/recommended'],
 	eslint.configs.recommended,
 	...tseslint.configs.recommended,
 	...svelte.configs['flat/recommended'],
