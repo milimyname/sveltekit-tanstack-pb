@@ -1,45 +1,49 @@
 <script lang="ts">
 	import { pocketbase } from '$lib/pocketbase';
-	import { createQuery } from '@tanstack/svelte-query';
+	import { createQuery, useQueryClient } from '@tanstack/svelte-query';
 	import { createMutation } from '@tanstack/svelte-query';
 	import { Dialog } from 'bits-ui';
 	import { superForm } from 'sveltekit-superforms';
 	import { _postSchema, type PostSchema } from './+page';
 	import { zod } from 'sveltekit-superforms/adapters';
 	import { onMount } from 'svelte';
+	import { browser } from '$app/environment';
 
 	export let data;
 
 	let dialogOpen = false;
-	let isOnline = true;
+	let isOnline = browser ? navigator.onLine : true;
+
+	const queryClient = useQueryClient();
 
 	// This data is cached by prefetchQuery in +page.ts so no fetch actually happens here
 	const query = createQuery({
 		queryKey: ['posts'],
 		queryFn: async () => {
-			if (!isOnline) return data.queryClient.getQueryData(['posts']);
+			if (!isOnline) return queryClient.getQueryData(['posts']);
 
 			return await fetch('/api/posts').then((res) => res.json());
-		}
+		},
+		initialData: () => queryClient.getQueryData(['posts'])
 	});
 
 	onMount(() => {
 		isOnline = navigator.onLine;
 		window.addEventListener('online', () => {
 			isOnline = true;
-			data.queryClient.resumePausedMutations();
+			queryClient.resumePausedMutations();
 		});
 		window.addEventListener('offline', () => (isOnline = false));
 	});
 
-	const { form, errors, constraints, enhance, reset } = superForm(data.form, {
+	const { form, errors, enhance, reset } = superForm(data.form, {
 		SPA: true,
 		validators: zod(_postSchema),
-		onUpdate({ form }) {
+		async onUpdate({ form }) {
 			if (form.valid) {
 				$postMutation.mutate({ title: form.data.title });
 				dialogOpen = false;
-				$query.refetch();
+				reset();
 			}
 		}
 	});
@@ -52,27 +56,33 @@
 		},
 		onMutate: async (newPost) => {
 			// Cancel any outgoing refetches (so they don't overwrite our optimistic update)
-			await data.queryClient.cancelQueries({ queryKey: ['posts'] });
+			await queryClient.cancelQueries({ queryKey: ['posts'] });
 
 			// Snapshot the previous value
-			const previousPosts = data.queryClient.getQueryData(['posts']);
+			const previousPosts = queryClient.getQueryData(['posts']);
 
 			// Optimistically update to the new value
-			data.queryClient.setQueryData(['posts'], (old: any) => {
+			queryClient.setQueryData(['posts'], (old: any) => {
 				return [...old, { id: Math.random().toString(36).substring(7), title: newPost.title }];
 			});
 
 			// Return a context object with the snapshotted value
 			return { previousPosts };
 		},
+		onSuccess: (newPost, variables, context) => {
+			// Update the query data with the actual new post from the server
+			queryClient.setQueryData(['posts'], (old: any[]) => {
+				const filteredOld = old.filter((post) => post.id !== newPost.id);
+				return [...filteredOld, newPost];
+			});
+		},
 		onError: (err, newPost, context) => {
 			// If the mutation fails, use the context returned from onMutate to roll back
-			if (context) data.queryClient.setQueryData(['posts'], context.previousPosts);
+			if (context) queryClient.setQueryData(['posts'], context.previousPosts);
 		},
 		onSettled: () => {
-			reset();
 			// Always refetch after error or success:
-			data.queryClient.invalidateQueries({ queryKey: ['posts'] });
+			queryClient.invalidateQueries({ queryKey: ['posts'] });
 		}
 	});
 </script>
