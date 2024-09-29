@@ -1,15 +1,11 @@
+import { pocketbase } from '$lib/pocketbase';
 import { json } from '@sveltejs/kit';
 
-export function GET() {
-	const posts = [
-		{
-			title: 'Post 1',
-			content: 'This is the first post.'
-		},
-		{
-			title: 'Post 2',
-			content: "This is the's second post."
-		}
-	];
-	return json(posts);
+export async function GET() {
+	const posts = await pocketbase.collection('posts').getList(1, 10, {
+		fields: 'title,content',
+		sort: '-created'
+	});
+
+	return json(posts.items);
 }

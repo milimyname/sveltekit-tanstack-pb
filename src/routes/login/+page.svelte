@@ -1,65 +1,62 @@
 <script lang="ts">
 	import { dev } from '$app/environment';
-	import { goto, invalidate, invalidateAll } from '$app/navigation';
-	import { page } from '$app/stores';
+	import { goto, invalidateAll } from '$app/navigation';
 	import { pocketbase } from '$lib/pocketbase';
 	import { createMutation } from '@tanstack/svelte-query';
+	import { _userSchema } from './+page';
+	import { superForm } from 'sveltekit-superforms';
+	import { zod } from 'sveltekit-superforms/adapters';
 
 	export let data;
 
-	let username: string;
-	let password: string;
-	let message = $page.url.searchParams.get('message');
+	const { form, errors, constraints, enhance } = superForm(data.form, {
+		SPA: true,
+		validators: zod(_userSchema),
+		onUpdate({ form }) {
+			$loginMutation.mutate({ username: form.data.emailOrUsername, password: form.data.password });
+		}
+	});
 
 	const loginMutation = createMutation({
 		mutationFn: async ({ username, password }: any) => {
 			return await pocketbase.collection('users').authWithPassword(username, password);
 		},
 		onSuccess: async () => {
-			username = '';
-			password = '';
 			await invalidateAll();
-			setTimeout(() => goto('/?message="logged in successfully"'), 100);
+			setTimeout(() => goto('/'), 100);
 		},
 		onError: (error: any) => {
 			dev && console.error('(dev) /login: ', error.message);
-			message = error.message;
 		}
 	});
-
-	function handleLogin() {
-		$loginMutation.mutate({ username, password });
-	}
 </script>
 
 {#if data.user}
 	<h2>You are already logged in</h2>
 {:else}
-	<form on:submit|preventDefault={handleLogin}>
-		<h2>Login to Pocketbase</h2>
-		<label for="username">
-			Username or Email
-			<input autocomplete="on" bind:value={username} id="username" name="username" type="text" />
-		</label>
-		<label for="password">
-			Password
+	<form method="POST" use:enhance>
+		<label>
+			Email or Username<br />
 			<input
-				autocomplete="on"
-				bind:value={password}
-				id="password"
-				name="password"
-				type="password"
+				aria-invalid={$errors.emailOrUsername ? 'true' : undefined}
+				bind:value={$form.emailOrUsername}
+				{...$constraints.emailOrUsername}
 			/>
 		</label>
-		<button type="submit" disabled={$loginMutation.isLoading}>
-			{$loginMutation.isLoading ? 'Logging in...' : 'Login'}
-		</button>
+		{#if $errors.emailOrUsername}<span class="invalid">{$errors.emailOrUsername}</span>{/if}
 
-		{#if message}
-			<div id="error">
-				<span>{message}</span>
-			</div>
-		{/if}
+		<label>
+			E-mail<br />
+			<input
+				type="password"
+				aria-invalid={$errors.password ? 'true' : undefined}
+				bind:value={$form.password}
+				{...$constraints.password}
+			/>
+		</label>
+		{#if $errors.password}<span class="invalid">{$errors.password}</span>{/if}
+
+		<button disabled={$loginMutation.isPending}>Submit</button>
 	</form>
 {/if}
 
