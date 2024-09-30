@@ -7,12 +7,11 @@
 	import { _postSchema, type PostSchema } from './+page';
 	import { zod } from 'sveltekit-superforms/adapters';
 	import { onMount } from 'svelte';
-	import { browser } from '$app/environment';
 
 	export let data;
 
 	let dialogOpen = false;
-	let isOnline = browser ? navigator.onLine : true;
+	let isOnline = true;
 
 	const queryClient = useQueryClient();
 
@@ -69,7 +68,7 @@
 			// Return a context object with the snapshotted value
 			return { previousPosts };
 		},
-		onSuccess: (newPost, variables, context) => {
+		onSuccess: (newPost) => {
 			// Update the query data with the actual new post from the server
 			queryClient.setQueryData(['posts'], (old: any[]) => {
 				const filteredOld = old.filter((post) => post.id !== newPost.id);
